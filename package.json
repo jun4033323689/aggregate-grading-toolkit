@@ -1,0 +1,36 @@
+{
+  "name": "aggregate-grading-toolkit",
+  "version": "1.0.0",
+  "description": "骨料筛分与级配校验工具：累计筛余 / 通过率 / 细度模数 / 级配区判定 / Fuller 对照。只做数据口径校验，不含配合比求解算法。",
+  "keywords": [
+    "concrete",
+    "aggregate",
+    "grading",
+    "sieve-analysis",
+    "fineness-modulus",
+    "混凝土",
+    "骨料级配",
+    "筛分",
+    "细度模数"
+  ],
+  "license": "MIT",
+  "author": "杨镇铭 (Yang Zhenming)",
+  "type": "commonjs",
+  "main": "grading-core.js",
+  "bin": {
+    "grading": "cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test tests/core.test.mjs",
+    "demo": "node cli.mjs samples"
+  },
+  "files": [
+    "grading-core.js",
+    "cli.mjs",
+    "index.html",
+    "README.md",
+    "LICENSE",
+    "samples",
+    "docs"
+  ]
+}

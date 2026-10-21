@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>骨料筛分与级配校验工具 · aggregate-grading-toolkit</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1a1d21; --ink-2:#5b6470; --line:#e3e6ea;
+    --accent:#1f6feb; --ok:#12805c; --warn:#b45309; --bad:#b42318; --band:#1f6feb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+  header h1{font-size:20px;margin:0 0 6px;letter-spacing:.2px}
+  header p{margin:0;color:var(--ink-2);font-size:13px}
+  .grid{display:grid;grid-template-columns:420px 1fr;gap:18px;margin-top:20px;align-items:start}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .card h2{font-size:13px;font-weight:600;margin:0 0 12px;color:var(--ink-2);
+    text-transform:none;letter-spacing:.4px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--line)}
+  th{color:var(--ink-2);font-weight:500;font-size:12px}
+  th:first-child,td:first-child{text-align:left}
+  input[type=number]{width:100%;padding:5px 6px;border:1px solid var(--line);border-radius:6px;
+    font:inherit;font-size:13px;text-align:right;background:#fff;color:var(--ink)}
+  input[type=number]:focus{outline:2px solid #cfe0ff;border-color:var(--accent)}
+  td.mono{font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  button{font:inherit;font-size:12.5px;padding:6px 11px;border-radius:7px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);cursor:pointer}
+  button:hover{border-color:#c9ced6;background:#fafbfc}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.primary:hover{background:#1a61d0}
+  canvas{width:100%;height:380px;display:block}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-top:10px}
+  .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px}
+  .kpi{background:#fbfcfd;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .kpi b{display:block;font-size:19px;font-weight:600;letter-spacing:-.2px;margin-top:2px}
+  .kpi span{font-size:11.5px;color:var(--ink-2)}
+  .msg{margin-top:12px;font-size:12.5px;padding:9px 11px;border-radius:7px;display:none}
+  .msg.show{display:block}
+  .msg.err{background:#fef3f2;color:var(--bad);border:1px solid #fecdca}
+  .msg.warn{background:#fffaeb;color:var(--warn);border:1px solid #fedf89}
+  .msg.ok{background:#ecfdf3;color:var(--ok);border:1px solid #abefc6}
+  .msg ul{margin:4px 0 0;padding-left:18px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-left:auto}
+  .seg button{border:0;border-radius:0;padding:5px 11px;font-size:12px}
+  .seg button.on{background:var(--accent);color:#fff}
+  .head-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .head-row h2{margin:0}
+  footer{margin-top:26px;font-size:12px;color:var(--ink-2);line-height:1.9}
+  footer a{color:var(--accent);text-decoration:none}
+  .hint{font-size:12px;color:var(--ink-2);margin-top:8px;line-height:1.7}
+  .drop{border:1px dashed #cfd5dd;border-radius:8px;padding:10px;text-align:center;
+    font-size:12.5px;color:var(--ink-2);margin-top:12px}
+  .drop.hot{border-color:var(--accent);background:#f5f9ff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>骨料筛分与级配校验工具</h1>
+    <p>输入分计筛余，自动算出累计筛余 / 通过率 / 细度模数 / 级配区，并对照 Fuller 理想曲线。纯本地运行，数据不上传。</p>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <div class="head-row">
+        <h2>筛分数据（分计筛余 %）</h2>
+        <div class="seg" id="kindSeg">
+          <button data-kind="sand" class="on">砂</button>
+          <button data-kind="stone">石</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>筛孔 mm</th><th>分计筛余 %</th><th>累计 %</th><th>通过 %</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="row-actions">
+        <button id="addRow">＋ 加一行</button>
+        <button id="loadSand">载入砂示例</button>
+        <button id="loadStone">载入石示例</button>
+        <button id="exportCsv" class="primary">导出 CSV</button>
+      </div>
+      <div class="drop" id="drop">把 CSV 文件拖到这里，或
+        <label style="color:var(--accent);cursor:pointer;text-decoration:underline">
+          选择文件<input type="file" id="file" accept=".csv,.txt" hidden>
+        </label>
+      </div>
+      <p class="hint">
+        筛孔请从大到小录（工具会自动排序，但排序方向错了是本行业最高频的错误，见 README）。<br>
+        最后一行的筛孔填 <b>0</b> 表示筛底。
+      </p>
+
+      <div class="kpis" id="kpis"></div>
+      <div class="msg" id="msg"></div>
+    </section>
+
+    <section class="card">
+      <div class="head-row">
+        <h2>级配曲线</h2>
+        <div class="seg" id="zoneSeg">
+          <button data-zone="none" class="on">不显示规范区</button>
+          <button data-zone="II">II 区</button>
+          <button data-zone="I">I 区</button>
+          <button data-zone="III">III 区</button>
+        </div>
+      </div>
+      <canvas id="chart"></canvas>
+      <div class="legend">
+        <span><i style="background:#1f6feb"></i>实测通过率</span>
+        <span><i style="background:#9aa4b2"></i>Fuller n=0.5</span>
+        <span><i style="background:#16a34a"></i>规范级配区（上/下限）</span>
+      </div>
+      <p class="hint">
+        横轴为对数刻度。Fuller 曲线是 1907 年的连续级配理想解，只作参照，
+        <b>不是</b>判定依据；判定依据是规范级配区。
+      </p>
+    </section>
+  </div>
+
+  <footer>
+    纯前端工具，不含任何配合比求解算法；规范数值摘自 JGJ 52-2006，使用前请与现行版本核对。<br>
+    MIT License · 作者 杨镇铭（Yang Zhenming）· 源码与问题反馈见仓库 README。
+  </footer>
+</div>
+
+<script src="grading-core.js"></script>
+<script>
+(function () {
+  var G = window.GradingCore;
+  var tbody = document.getElementById('tbody');
+  var kpis = document.getElementById('kpis');
+  var msg = document.getElementById('msg');
+  var chart = document.getElementById('chart');
+  var kind = 'sand';
+  var zoneOn = 'none';
+
+  var SAND_DEMO = [
+    { sieve: 4.75, retained: 0 }, { sieve: 2.36, retained: 12 },
+    { sieve: 1.18, retained: 20 }, { sieve: 0.6, retained: 24 },
+    { sieve: 0.3, retained: 22 }, { sieve: 0.15, retained: 15 },
+    { sieve: 0, retained: 7 }
+  ];
+  var STONE_DEMO = [
+    { sieve: 26.5, retained: 0 }, { sieve: 19, retained: 22 },
+    { sieve: 16, retained: 26 }, { sieve: 9.5, retained: 38 },
+    { sieve: 4.75, retained: 13 }, { sieve: 2.36, retained: 1 },
+    { sieve: 0, retained: 0.5 }
+  ];
+
+  function rows() {
+    var out = [];
+    var trs = tbody.querySelectorAll('tr');
+    for (var i = 0; i < trs.length; i++) {
+      var s = trs[i].querySelector('.sv');
+      var r = trs[i].querySelector('.rv');
+      var sv = s && s.value !== '' ? Number(s.value) : NaN;
+      var rv = r && r.value !== '' ? Number(r.value) : NaN;
+      if (isFinite(sv)) out.push({ sieve: sv, retained: isFinite(rv) ? rv : 0 });
+    }
+    return out;
+  }
+
+  function addRow(sieve, retained) {
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td><input class="sv" type="number" step="0.001" min="0" value="' + (sieve == null ? '' : sieve) + '"></td>' +
+      '<td><input class="rv" type="number" step="0.1" min="0" value="' + (retained == null ? '' : retained) + '"></td>' +
+      '<td class="mono cr">—</td><td class="mono pr">—</td>';
+    tbody.appendChild(tr);
+    tr.querySelectorAll('input').forEach(function (el) {
+      el.addEventListener('input', render);
+    });
+    return tr;
+  }
+
+  function fill(list) {
+    tbody.innerHTML = '';
+    for (var i = 0; i < list.length; i++) addRow(list[i].sieve, list[i].retained);
+    render();
+  }
+
+  function setMsg(kindOf, text) {
+    if (!text) { msg.className = 'msg'; msg.innerHTML = ''; return; }
+    msg.className = 'msg show ' + kindOf;
+    msg.innerHTML = text;
+  }
+
+  function render() {
+    var data = rows();
+    var rep = G.analyze(data, { kind: kind });
+
+    // 表格右侧只读列
+    var trs = tbody.querySelectorAll('tr');
+    var bySieve = {};
+    if (rep.ok) {
+      for (var i = 0; i < rep.sieves.length; i++) {
+        bySieve[String(rep.sieves[i])] = { cr: rep.cumulative[i], pr: rep.passing[i] };
+      }
+    }
+    for (var j = 0; j < trs.length; j++) {
+      var sv = trs[j].querySelector('.sv');
+      var cell = sv && sv.value !== '' ? bySieve[String(Number(sv.value))] : null;
+      trs[j].querySelector('.cr').textContent = cell ? cell.cr : '—';
+      trs[j].querySelector('.pr').textContent = cell ? cell.pr : '—';
+    }
+
+    kpis.innerHTML = '';
+    if (!rep.ok) {
+      setMsg('err', rep.errors.join('<br>'));
+      draw(null);
+      return;
+    }
+
+    var kpi = function (label, value, sub) {
+      var d = document.createElement('div');
+      d.className = 'kpi';
+      d.innerHTML = '<span>' + label + '</span><b>' + value + '</b>' +
+        (sub ? '<span style="display:block;margin-top:2px">' + sub + '</span>' : '');
+      kpis.appendChild(d);
+    };
+
+    kpi('分计筛余合计', rep.massBalancePct + '%',
+      (rep.massBalancePct >= 98 && rep.massBalancePct <= 102) ? '在 98~102% 内' : '偏离 98~102%');
+
+    if (kind === 'sand') {
+      if (rep.finenessModulus && rep.finenessModulus.ok) {
+        kpi('细度模数 μf', rep.finenessModulus.value, rep.finenessModulus.classification);
+      } else {
+        kpi('细度模数 μf', '—', '筛孔不全');
+      }
+      kpi('级配区', rep.zone.pass ? rep.zone.zones.join(' / ') + ' 区' : '不合格',
+        rep.zone.pass ? '符合 JGJ 52 表 4.2.2' : '不落在任何区内');
+    }
+    if (rep.fines && rep.fines.value != null) {
+      kpi('细粉含量', rep.fines.value + '%', rep.fines.basis);
+    }
+    if (rep.fuller) {
+      kpi('与 Fuller 偏差', rep.fuller.rms + ' pp', '均方根，仅参照');
+    }
+
+    var notes = [];
+    if (rep.warnings.length) notes = notes.concat(rep.warnings);
+    if (rep.errors.length) notes = notes.concat(rep.errors);
+    if (kind === 'sand' && !rep.zone.pass) {
+      notes.push('累计筛余不落在 I/II/III 任何区内 —— 先复核数据，再怀疑材料。');
+    }
+    if (notes.length) {
+      setMsg(rep.errors.length ? 'warn' : 'warn', '<ul><li>' + notes.join('</li><li>') + '</li></ul>');
+    } else {
+      setMsg('ok', '未发现问题：合计在窗内、筛孔齐全、级配区判定通过。');
+    }
+
+    draw(rep);
+  }
+
+  // ---------------- 绘图 ----------------
+  function draw(rep) {
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = chart.clientWidth, cssH = chart.clientHeight || 380;
+    chart.width = Math.round(cssW * dpr);
+    chart.height = Math.round(cssH * dpr);
+    var ctx = chart.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    var pad = { l: 46, r: 16, t: 16, b: 34 };
+    var W = cssW - pad.l - pad.r, H = cssH - pad.t - pad.b;
+
+    var sieves = rep ? rep.sieves.filter(function (s) { return s > 0; }) : [0.075, 0.15, 0.3, 0.6, 1.18, 2.36, 4.75];
+    if (!sieves.length) return;
+    var xMin = Math.min.apply(null, sieves) / 1.6;
+    var xMax = Math.max.apply(null, sieves) * 1.15;
+    var lx0 = Math.log10(xMin), lx1 = Math.log10(xMax);
+
+    function X(d) { return pad.l + (Math.log10(d) - lx0) / (lx1 - lx0) * W; }
+    function Y(p) { return pad.t + (1 - p / 100) * H; }
+
+    // 网格
+    ctx.strokeStyle = '#eceff3'; ctx.lineWidth = 1;
+    [0, 20, 40, 60, 80, 100].forEach(function (p) {
+      ctx.beginPath(); ctx.moveTo(pad.l, Y(p)); ctx.lineTo(pad.l + W, Y(p)); ctx.stroke();
+      ctx.fillStyle = '#8a929e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText(p + '', pad.l - 8, Y(p) + 4);
+    });
+    var ticks = [0.075, 0.15, 0.3, 0.6, 1.18, 2.36, 4.75, 9.5, 16, 19, 26.5, 31.5, 37.5];
+    ctx.textAlign = 'center';
+    ticks.forEach(function (t) {
+      if (t < xMin || t > xMax) return;
+      var x = X(t);
+      ctx.strokeStyle = '#f1f3f6';
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + H); ctx.stroke();
+      ctx.fillStyle = '#8a929e';
+      ctx.fillText(t >= 1 ? String(t) : String(t), x, pad.t + H + 16);
+    });
+    ctx.fillStyle = '#8a929e';
+    ctx.fillText('筛孔 (mm)', pad.l + W / 2, pad.t + H + 32);
+    ctx.save(); ctx.translate(12, pad.t + H / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText('通过率 (%)', 0, 0); ctx.restore();
+
+    if (!rep) return;
+
+    // 规范级配区（仅砂）
+    if (kind === 'sand' && zoneOn !== 'none' && G.SAND_GRADING_ZONES[zoneOn]) {
+      var zone = G.SAND_GRADING_ZONES[zoneOn];
+      ctx.beginPath();
+      zone.forEach(function (b, i) { i ? ctx.lineTo(X(b.sieve), Y(b.hi)) : ctx.moveTo(X(b.sieve), Y(b.hi)); });
+      for (var k = zone.length - 1; k >= 0; k--) ctx.lineTo(X(zone[k].sieve), Y(zone[k].lo));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(22,163,74,.10)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(22,163,74,.55)'; ctx.lineWidth = 1.2; ctx.stroke();
+    }
+
+    // Fuller 理想曲线
+    if (rep.fuller) {
+      var fullv = G.fullerCurve(rep.sieves, null, 0.5);
+      ctx.beginPath(); ctx.strokeStyle = '#9aa4b2'; ctx.lineWidth = 1.4; ctx.setLineDash([5, 4]);
+      var started = false;
+      for (var i2 = 0; i2 < rep.sieves.length; i2++) {
+        if (rep.sieves[i2] <= 0) continue;
+        var fx = X(rep.sieves[i2]), fy = Y(fullv[i2]);
+        started ? ctx.lineTo(fx, fy) : (ctx.moveTo(fx, fy), started = true);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // 实测曲线
+    ctx.beginPath(); ctx.strokeStyle = '#1f6feb'; ctx.lineWidth = 2.2; ctx.lineJoin = 'round';
+    var pts = [];
+    for (var i3 = 0; i3 < rep.sieves.length; i3++) {
+      if (rep.sieves[i3] <= 0) continue;
+      pts.push({ x: X(rep.sieves[i3]), y: Y(rep.passing[i3]) });
+    }
+    for (var i4 = 0; i4 < pts.length; i4++) {
+      i4 ? ctx.lineTo(pts[i4].x, pts[i4].y) : ctx.moveTo(pts[i4].x, pts[i4].y);
+    }
+    ctx.stroke();
+    for (var i5 = 0; i5 < pts.length; i5++) {
+      ctx.beginPath(); ctx.arc(pts[i5].x, pts[i5].y, 3.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.strokeStyle = '#1f6feb'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+
+  // ---------------- 交互 ----------------
+  document.getElementById('addRow').onclick = function () { addRow('', ''); };
+  document.getElementById('loadSand').onclick = function () { kind = 'sand'; syncKind(); fill(SAND_DEMO); };
+  document.getElementById('loadStone').onclick = function () { kind = 'stone'; syncKind(); fill(STONE_DEMO); };
+
+  function syncKind() {
+    document.querySelectorAll('#kindSeg button').forEach(function (b) {
+      b.classList.toggle('on', b.getAttribute('data-kind') === kind);
+    });
+  }
+
+  document.querySelectorAll('#kindSeg button').forEach(function (b) {
+    b.onclick = function () { kind = b.getAttribute('data-kind'); syncKind(); render(); };
+  });
+  document.querySelectorAll('#zoneSeg button').forEach(function (b) {
+    b.onclick = function () {
+      zoneOn = b.getAttribute('data-zone');
+      document.querySelectorAll('#zoneSeg button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      render();
+    };
+  });
+
+  document.getElementById('exportCsv').onclick = function () {
+    var rep = G.analyze(rows(), { kind: kind });
+    if (!rep.ok) { setMsg('err', '数据还不完整，先修好再导出。'); return; }
+    var blob = new Blob(['\ufeff' + G.toCsv(rep)], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'grading-' + Date.now() + '.csv';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+  };
+
+  function readCsvFile(file) {
+    var fr = new FileReader();
+    fr.onload = function () {
+      var parsed = G.parseCsv(String(fr.result));
+      if (!parsed.length) { setMsg('err', '这个文件里没读到「筛孔,分计筛余」两列。'); return; }
+      tbody.innerHTML = '';
+      parsed.forEach(function (r) { addRow(r.sieve, r.retained); });
+      render();
+    };
+    fr.readAsText(file, 'utf-8');
+  }
+
+  var drop = document.getElementById('drop');
+  document.getElementById('file').onchange = function (e) {
+    if (e.target.files && e.target.files[0]) readCsvFile(e.target.files[0]);
+  };
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('hot'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('hot'); });
+  });
+  drop.addEventListener('drop', function (e) {
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) readCsvFile(e.dataTransfer.files[0]);
+  });
+
+  window.addEventListener('resize', function () { render(); });
+
+  fill(SAND_DEMO);
+})();
+</script>
+</body>
+</html>
