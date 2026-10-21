@@ -4,6 +4,11 @@
 
 零依赖 · 纯本地运行 · 离线可用 · 不含任何配合比求解算法。
 
+[![在线使用](https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E4%BD%BF%E7%94%A8-live%20demo-2ea44f)](https://jun4033323689.github.io/aggregate-grading-toolkit/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**在线版（免安装）**：<https://jun4033323689.github.io/aggregate-grading-toolkit/>
+
 > 输入 7 个筛孔的分计筛余，输出：累计筛余 → 通过率 → 细度模数 → 级配区判定 → 细粉含量 → 与 Fuller 曲线的偏差。
 
 ![界面截图](docs/screenshot.png)
