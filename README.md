@@ -5,6 +5,7 @@
 零依赖 · 纯本地运行 · 离线可用 · 不含任何配合比求解算法。
 
 [![在线使用](https://img.shields.io/badge/%E5%9C%A8%E7%BA%BF%E4%BD%BF%E7%94%A8-live%20demo-2ea44f)](https://jun4033323689.github.io/aggregate-grading-toolkit/)
+[![test](https://github.com/jun4033323689/aggregate-grading-toolkit/actions/workflows/test.yml/badge.svg)](https://github.com/jun4033323689/aggregate-grading-toolkit/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **在线版（免安装）**：<https://jun4033323689.github.io/aggregate-grading-toolkit/>

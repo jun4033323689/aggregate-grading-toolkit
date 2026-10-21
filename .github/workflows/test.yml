@@ -1,0 +1,49 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 单元测试（14 条断言）
+        run: node --test tests/core.test.mjs
+
+      - name: 合格样本必须通过
+        run: |
+          node cli.mjs samples/sand-mechanism-II.csv
+          node cli.mjs samples/sand-river-II.csv
+          node cli.mjs samples/stone-5-20.csv
+
+      - name: 反例必须被拦截（断级配）
+        run: |
+          if node cli.mjs samples/bad-gap-graded.csv; then
+            echo "::error::断级配样本没有被判为不合格"
+            exit 1
+          else
+            echo "断级配样本已正确拦截"
+          fi
+
+      - name: 反例必须被拦截（漏筛底）
+        run: |
+          out=$(node cli.mjs samples/bad-missing-pan.csv)
+          echo "$out"
+          if echo "$out" | grep -q "超出 98%~102%"; then
+            echo "漏筛底已正确告警（合计 93%，属警告不是硬不合格）"
+          else
+            echo "::error::漏筛底样本没有给出合计异常告警"
+            exit 1
+          fi
