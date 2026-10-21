@@ -72,7 +72,8 @@
       <div class="head-row">
         <h2>筛分数据（分计筛余 %）</h2>
         <div class="seg" id="kindSeg">
-          <button data-kind="sand" class="on">砂</button>
+          <button data-kind="auto" class="on">自动判定</button>
+          <button data-kind="sand">砂</button>
           <button data-kind="stone">石</button>
         </div>
       </div>
@@ -139,7 +140,7 @@
   var kpis = document.getElementById('kpis');
   var msg = document.getElementById('msg');
   var chart = document.getElementById('chart');
-  var kind = 'sand';
+  var kind = 'auto';   // auto | sand | stone
   var zoneOn = 'none';
 
   var SAND_DEMO = [
@@ -195,7 +196,7 @@
 
   function render() {
     var data = rows();
-    var rep = G.analyze(data, { kind: kind });
+    var rep = G.analyze(data, { kind: kind === 'auto' ? null : kind });
 
     // 表格右侧只读列
     var trs = tbody.querySelectorAll('tr');
@@ -230,7 +231,7 @@
     kpi('分计筛余合计', rep.massBalancePct + '%',
       (rep.massBalancePct >= 98 && rep.massBalancePct <= 102) ? '在 98~102% 内' : '偏离 98~102%');
 
-    if (kind === 'sand') {
+    if (rep.kind === 'sand') {
       if (rep.finenessModulus && rep.finenessModulus.ok) {
         kpi('细度模数 μf', rep.finenessModulus.value, rep.finenessModulus.classification);
       } else {
@@ -238,9 +239,14 @@
       }
       kpi('级配区', rep.zone.pass ? rep.zone.zones.join(' / ') + ' 区' : '不合格',
         rep.zone.pass ? '符合 JGJ 52 表 4.2.2' : '不落在任何区内');
+    } else {
+      kpi('骨料类别', '粗骨料', '4.75mm 通过率 <85%');
+      kpi('细度模数 μf', '不适用', '只对细骨料定义');
+      kpi('砂级配区', '不适用', 'JGJ 52 砂区不适用于粗骨料');
+      if (rep.nominalTopSize) kpi('最大粒径', rep.nominalTopSize.sieve + ' mm', '该筛孔全部通过');
     }
     if (rep.fines && rep.fines.value != null) {
-      var isFines = rep.fines.basis.indexOf('0.075') >= 0;
+      var isFines = rep.fines.isFines === true;
       kpi(isFines ? '细粉 <0.075mm' : '最小筛通过率', rep.fines.value + '%', rep.fines.basis);
     }
     if (rep.fuller) {
@@ -250,13 +256,15 @@
     var notes = [];
     if (rep.warnings.length) notes = notes.concat(rep.warnings);
     if (rep.errors.length) notes = notes.concat(rep.errors);
-    if (kind === 'sand' && !rep.zone.pass) {
+    if (rep.kind === 'sand' && !rep.zone.pass) {
       notes.push('累计筛余不落在 I/II/III 任何区内 —— 先复核数据，再怀疑材料。');
     }
     if (notes.length) {
       setMsg(rep.errors.length ? 'warn' : 'warn', '<ul><li>' + notes.join('</li><li>') + '</li></ul>');
     } else {
-      setMsg('ok', '未发现问题：合计在窗内、筛孔齐全、级配区判定通过。');
+      setMsg('ok', rep.kind === 'sand'
+        ? '未发现问题：合计在窗内、筛孔齐全、级配区判定通过。'
+        : '未发现问题：合计在窗内、通过率单调。粗骨料不做砂级配区判定。');
     }
 
     draw(rep);
@@ -308,8 +316,8 @@
 
     if (!rep) return;
 
-    // 规范级配区（仅砂）
-    if (kind === 'sand' && zoneOn !== 'none' && G.SAND_GRADING_ZONES[zoneOn]) {
+    // 规范级配区（仅砂；粗骨料不画，也不判）
+    if (rep.kind === 'sand' && zoneOn !== 'none' && G.SAND_GRADING_ZONES[zoneOn]) {
       var zone = G.SAND_GRADING_ZONES[zoneOn];
       ctx.beginPath();
       zone.forEach(function (b, i) { i ? ctx.lineTo(X(b.sieve), Y(b.hi)) : ctx.moveTo(X(b.sieve), Y(b.hi)); });
@@ -352,8 +360,8 @@
 
   // ---------------- 交互 ----------------
   document.getElementById('addRow').onclick = function () { addRow('', ''); };
-  document.getElementById('loadSand').onclick = function () { kind = 'sand'; syncKind(); fill(SAND_DEMO); };
-  document.getElementById('loadStone').onclick = function () { kind = 'stone'; syncKind(); fill(STONE_DEMO); };
+  document.getElementById('loadSand').onclick = function () { kind = 'auto'; syncKind(); fill(SAND_DEMO); };
+  document.getElementById('loadStone').onclick = function () { kind = 'auto'; syncKind(); fill(STONE_DEMO); };
 
   function syncKind() {
     document.querySelectorAll('#kindSeg button').forEach(function (b) {
@@ -374,7 +382,7 @@
   });
 
   document.getElementById('exportCsv').onclick = function () {
-    var rep = G.analyze(rows(), { kind: kind });
+    var rep = G.analyze(rows(), { kind: kind === 'auto' ? null : kind });
     if (!rep.ok) { setMsg('err', '数据还不完整，先修好再导出。'); return; }
     var blob = new Blob(['\ufeff' + G.toCsv(rep)], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');

@@ -4,7 +4,7 @@
  * 用法：
  *   node cli.mjs samples/sand-mechanism-II.csv
  *   node cli.mjs samples/                 # 目录下所有 csv
- *   node cli.mjs a.csv --kind stone --json
+ *   node cli.mjs a.csv --kind stone --json      # 默认 auto：4.75mm 通过率 <85% 判为粗骨料
  *   node cli.mjs a.csv --cumulative       # 输入列是累计筛余
  */
 import fs from 'node:fs';
@@ -17,12 +17,12 @@ const G = require('./grading-core.js');
 const argv = process.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith('--')));
 const targets = argv.filter((a) => !a.startsWith('--'));
-const kind = flags.has('--kind') ? argv[argv.indexOf('--kind') + 1] : 'sand';
+const kind = flags.has('--kind') ? argv[argv.indexOf('--kind') + 1] : 'auto';
 const asJson = flags.has('--json');
 const asCumulative = flags.has('--cumulative');
 
 if (!targets.length) {
-  console.log('用法: node cli.mjs <文件或目录> [--kind sand|stone] [--cumulative] [--json]');
+  console.log('用法: node cli.mjs <文件或目录> [--kind auto|sand|stone] [--cumulative] [--json]');
   process.exit(1);
 }
 
@@ -47,14 +47,22 @@ function fmt(rep) {
     );
   }
   const bits = [];
+  bits.push((rep.kind === 'stone' ? '粗骨料' : '细骨料') + (rep.kindAuto ? '（自动判定）' : ''));
   bits.push('分计合计 ' + rep.massBalancePct + '%' + (rep.massBalancePct >= 98 && rep.massBalancePct <= 102 ? ' ✓' : ' ⚠'));
   if (rep.finenessModulus) {
-    bits.push(rep.finenessModulus.ok
-      ? '细度模数 μf=' + rep.finenessModulus.value + '（' + rep.finenessModulus.classification + '）'
-      : '细度模数 无法计算');
+    bits.push(rep.finenessModulus.notApplicable
+      ? '细度模数 不适用（粗骨料）'
+      : (rep.finenessModulus.ok
+        ? '细度模数 μf=' + rep.finenessModulus.value + '（' + rep.finenessModulus.classification + '）'
+        : '细度模数 无法计算'));
   }
-  if (rep.zone) bits.push(rep.zone.pass ? '级配区 ' + rep.zone.zones.join('/') + ' ✓' : '级配区 不合格 ✗');
-  if (rep.fines && rep.fines.value != null) bits.push('细粉 ' + rep.fines.value + '%');
+  if (rep.zone) {
+    bits.push(rep.zone.applicable === false
+      ? '砂级配区 不适用'
+      : (rep.zone.pass ? '级配区 ' + rep.zone.zones.join('/') + ' ✓' : '级配区 不合格 ✗'));
+  }
+  if (rep.nominalTopSize) bits.push('最大粒径 ' + rep.nominalTopSize.sieve + ' mm');
+  if (rep.fines && rep.fines.value != null) bits.push((rep.fines.isFines ? '细粉 <0.075mm ' : '最小筛通过率 ') + rep.fines.value + '%');
   if (rep.fuller) bits.push('Fuller 偏差 RMS ' + rep.fuller.rms + ' pp');
   lines.push('  — ' + bits.join(' · '));
   if (rep.errors.length) lines.push('  ✗ ' + rep.errors.join('；'));
@@ -67,7 +75,7 @@ for (const t of targets) {
   for (const file of listCsv(t)) {
     const text = fs.readFileSync(file, 'utf8');
     const rows = G.parseCsv(text, asCumulative ? 'cumulative' : 'retained');
-    const rep = G.analyze(rows, { kind });
+    const rep = G.analyze(rows, { kind: kind === 'auto' ? null : kind });
     results.push({ file, rep });
     if (!asJson) {
       console.log('\n■ ' + path.basename(file));

@@ -1,6 +1,6 @@
 {
   "name": "aggregate-grading-toolkit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "骨料筛分与级配校验工具：累计筛余 / 通过率 / 细度模数 / 级配区判定 / Fuller 对照。只做数据口径校验，不含配合比求解算法。",
   "keywords": [
     "concrete",

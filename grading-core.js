@@ -12,7 +12,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var VERSION = '1.0.0';
+  var VERSION = '1.0.1';
 
   /** 混凝土用砂标准筛孔（mm，降序）。0.075 为细粉/石粉常用补充筛。 */
   var SAND_SIEVES = [4.75, 2.36, 1.18, 0.6, 0.3, 0.15, 0.075];
@@ -187,15 +187,16 @@
     if (idx >= 0) {
       var sum = 0;
       for (var i = 0; i < retained.length; i++) sum += retained[i];
-      return { basis: '<0.075mm（0.075 筛通过率）', value: round(100 - sum, 2) };
+      return { basis: '<0.075mm（0.075 筛通过率）', value: round(100 - sum, 2), isFines: true };
     }
     var minS = Infinity, mi = -1;
     for (var j = 0; j < sieves.length; j++) {
       if (sieves[j] > 0 && sieves[j] < minS) { minS = sieves[j]; mi = j; }
     }
-    if (mi < 0) return { basis: '无法判定', value: null };
+    if (mi < 0) return { basis: '无法判定', value: null, isFines: false };
     var pr = passingRate(retained);
-    return { basis: '<' + minS + 'mm 通过率（未筛 0.075，只是该筛孔的通过量）', value: pr[mi] };
+    // isFines:false —— 这是「小于该筛孔的全部通过量」，不是石粉含量，两者不能混称
+    return { basis: '<' + minS + 'mm 通过率（未筛 0.075，只是该筛孔的通过量）', value: pr[mi], isFines: false };
   }
 
   /** Fuller 理想级配曲线：通过率 = 100·(d/D)^n，默认 n=0.5、D=最大公称粒径 */
@@ -221,21 +222,51 @@
   }
 
   /**
+   * 粗/细骨料判定。
+   *
+   * 依据：砂是粒径小于 4.75mm 的颗粒，正常砂在 4.75mm 筛上的通过率在 90% 以上；
+   * 碎石/卵石（5~20、5~25 这类）在 4.75mm 筛上的通过率很低（通常不到 10%）。
+   * 取 85% 作分界，两侧都有充分余量，不会误判。
+   *
+   * 这个判定的意义：**砂级配区与细度模数只对细骨料成立**。
+   * 把碎石喂进去判「级配区不合格」，是工具的错，不是数据的错。
+   */
+  function detectKind(sieves, passing) {
+    var idx = sieves.indexOf(4.75);
+    if (idx < 0) return 'sand';
+    return passing[idx] >= 85 ? 'sand' : 'stone';
+  }
+
+  /**
+   * 粗骨料的最大粒径 = 全部通过（累计筛余为 0）的那一档筛孔。
+   * 这是纯几何量。**不做「公称最大粒径」分档判定** —— 那要按 GB/T 14685 的分档表，本工具不判。
+   */
+  function nominalTopSize(sieves, cumulative) {
+    for (var i = sieves.length - 1; i >= 0; i--) {
+      if (cumulative[i] <= 1e-9) return { sieve: sieves[i], basis: '该筛孔累计筛余为 0（全部通过）' };
+    }
+    return null;
+  }
+
+  /**
    * 一份筛分数据的完整体检。
    * @param {Array<{sieve:number, retained:number}>} rows 分计筛余（%）
-   * @param {{kind?:'sand'|'stone', fullerN?:number, fullers?:boolean}} [opts]
+   * @param {{kind?:'auto'|'sand'|'stone', fullerN?:number, fullers?:boolean}} [opts]
    */
   function analyze(rows, opts) {
     var o = opts || {};
-    var kind = o.kind === 'stone' ? 'stone' : 'sand';
     var nm = normalize(rows);
     if (!nm.ok) return { ok: false, errors: nm.errors, warnings: nm.warnings };
 
     var cr = cumulativeRetained(nm.retained);
     var pr = passingRate(nm.retained);
+
+    var kind = (o.kind === 'sand' || o.kind === 'stone') ? o.kind : detectKind(nm.sieves, pr);
+
     var report = {
       ok: true,
       kind: kind,
+      kindAuto: (o.kind !== 'sand' && o.kind !== 'stone'),
       sieves: nm.sieves,
       retained: nm.retained,
       cumulative: cr,
@@ -252,8 +283,14 @@
       report.finenessModulus = fm;
       if (!fm.ok) report.errors.push(fm.reason);
       var zn = sandZoneOf(nm.sieves, cr);
+      zn.applicable = true;
       report.zone = zn;
       if (!zn.pass) report.errors.push('累计筛余不落在任何级配区（I/II/III）内');
+    } else {
+      // 粗骨料：细度模数与砂级配区都不适用，明确标注「不适用」，不硬判不合格
+      report.finenessModulus = { ok: false, notApplicable: true, reason: '细度模数只对细骨料定义，粗骨料不计算' };
+      report.zone = { applicable: false, zones: [], pass: true, note: 'JGJ 52 的砂级配区规定只适用于细骨料，粗骨料不做该项判定' };
+      report.nominalTopSize = nominalTopSize(nm.sieves, cr);
     }
 
     if (o.fullers !== false) {

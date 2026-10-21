@@ -133,3 +133,68 @@ test('toCsv 往返可被 parseCsv 读回', () => {
   assert.equal(back.length, SAND_A.length);
   assert.deepEqual(back.map((x) => x.retained), SAND_A.map((x) => x.retained));
 });
+
+// ---- 粗细骨料判定（2026-10-21 修的缺陷：碎石曾被当成砂判「级配区不合格」）----
+
+const STONE_5_20 = [
+  { sieve: 26.5, retained: 0 },
+  { sieve: 19, retained: 22 },
+  { sieve: 16, retained: 26 },
+  { sieve: 9.5, retained: 38 },
+  { sieve: 4.75, retained: 13 },
+  { sieve: 2.36, retained: 1 },
+  { sieve: 0, retained: 0 }
+];
+
+test('碎石自动判为粗骨料，且不产生「级配区不合格」', () => {
+  const r = G.analyze(STONE_5_20);
+  assert.equal(r.kind, 'stone');
+  assert.equal(r.kindAuto, true);
+  assert.deepEqual(r.errors, []);              // ← 回归点：修复前这里有 2 条错误
+  assert.equal(r.zone.applicable, false);
+  assert.equal(r.zone.pass, true);
+  assert.equal(r.finenessModulus.notApplicable, true);
+});
+
+test('粗骨料给出最大粒径（全部通过的那档筛孔）', () => {
+  const r = G.analyze(STONE_5_20);
+  assert.ok(r.nominalTopSize);
+  assert.equal(r.nominalTopSize.sieve, 26.5);
+});
+
+test('砂仍走细骨料分支，细度模数与级配区照旧', () => {
+  const r = G.analyze(SAND_A);
+  assert.equal(r.kind, 'sand');
+  assert.equal(r.finenessModulus.value, 2.71);
+  assert.deepEqual(r.zone.zones, ['II']);
+});
+
+test('--kind 可强制覆盖自动判定', () => {
+  const forced = G.analyze(STONE_5_20, { kind: 'sand' });
+  assert.equal(forced.kind, 'sand');
+  assert.equal(forced.kindAuto, false);
+  assert.ok(forced.errors.length > 0);   // 硬当砂判，本来就该报错
+});
+
+test('未筛 0.075 时必须是「最小筛通过率」，不能标成细粉含量', () => {
+  const noPan = [
+    { sieve: 4.75, retained: 0 }, { sieve: 2.36, retained: 12 },
+    { sieve: 1.18, retained: 20 }, { sieve: 0.6, retained: 24 },
+    { sieve: 0.3, retained: 22 }, { sieve: 0.15, retained: 15 },
+    { sieve: 0, retained: 7 }
+  ];
+  const r = G.analyze(noPan);
+  assert.equal(r.fines.isFines, false);   // ← 回归点：basis 文案里含「0.075」，曾把标签判断带偏
+  assert.ok(r.fines.basis.indexOf('<0.15mm') === 0);
+
+  const withPan = [
+    { sieve: 4.75, retained: 0 }, { sieve: 2.36, retained: 12 },
+    { sieve: 1.18, retained: 20 }, { sieve: 0.6, retained: 24 },
+    { sieve: 0.3, retained: 22 }, { sieve: 0.15, retained: 15 },
+    { sieve: 0.075, retained: 3 }, { sieve: 0, retained: 2 }
+  ];
+  const r2 = G.analyze(withPan);
+  assert.equal(r2.fines.isFines, true);
+  // 合计 98% ⇒ 细粉 = 100 - 98 = 2%（与合计口径一致，不是单看筛底）
+  assert.equal(r2.fines.value, 2);
+});
